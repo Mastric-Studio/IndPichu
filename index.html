@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>https://indpichu.tiiny.site</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      font-family: 'Orbitron', sans-serif;
+      background: radial-gradient(circle, #000010, #000000);
+      color: #00ffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      text-shadow: 0 0 20px #0ff;
+    }
+
+    .status {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      text-shadow: 0 0 8px #00ffff;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .cell {
+      width: 100px;
+      height: 100px;
+      background: #001122;
+      border: 2px solid #00ffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      color: #00ffcc;
+      cursor: pointer;
+      box-shadow: 0 0 10px #00ffff;
+      transition: background 0.2s;
+      user-select: none;
+    }
+
+    .cell:hover {
+      background: #002244;
+    }
+
+    .win-glow {
+      animation: glow 0.5s infinite alternate;
+    }
+
+    @keyframes glow {
+      from { box-shadow: 0 0 10px #00ffcc; color: #00ffcc; }
+      to   { box-shadow: 0 0 30px #00ffff; color: #00ffff; }
+    }
+
+    button, select {
+      background: #00ffff;
+      color: #000;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      cursor: pointer;
+      box-shadow: 0 0 10px #00ffff;
+      margin: 8px;
+    }
+
+    button:hover, select:hover {
+      background: #00cccc;
+    }
+
+    .leaderboard {
+      margin-top: 10px;
+      text-shadow: 0 0 6px #0ff;
+    }
+
+    .particles {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .particle {
+      position: absolute;
+      background-color: rgba(255, 255, 255, 0.7);
+      border-radius: 50%;
+      animation: explode 1.5s ease-out forwards;
+    }
+
+    @keyframes explode {
+      0% { transform: scale(0); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>IndPichu</h1>
+  <div class="status" id="status">Your Turn (🚀)</div>
+
+  <div class="board" id="board">
+    <div class="cell" data-index="0"></div>
+    <div class="cell" data-index="1"></div>
+    <div class="cell" data-index="2"></div>
+    <div class="cell" data-index="3"></div>
+    <div class="cell" data-index="4"></div>
+    <div class="cell" data-index="5"></div>
+    <div class="cell" data-index="6"></div>
+    <div class="cell" data-index="7"></div>
+    <div class="cell" data-index="8"></div>
+  </div>
+
+  <div>
+    <select id="modeSelect" onchange="setMode()">
+      <option value="1p">Player vs AI</option>
+      <option value="2p">2 Player</option>
+    </select>
+
+    <select id="difficultySelect" onchange="setDifficulty()">
+      <option value="easy">(Mini-1.0)</option>
+      <option value="medium" selected>(Beta-1.0)</option>
+      <option value="hard">(Flash-1.0)</option>
+    </select>
+  </div>
+
+  <button onclick="resetGame()">Reset Game</button>
+
+  <div class="leaderboard" id="leaderboard">Wins: 0 | Draws: 0 | Losses: 0</div>
+
+  <div class="particles" id="particles"></div>
+
+  <audio id="clickSound" src="https://cdn.pixabay.com/audio/2022/10/11/audio_12949e4f20.mp3"></audio>
+  <audio id="winSound" src="https://cdn.pixabay.com/audio/2022/10/12/audio_3ab7db062f.mp3"></audio>
+  <audio id="bgMusic" src="https://cdn.pixabay.com/audio/2022/03/23/audio_6c33f01745.mp3" loop autoplay></audio>
+
+  <script>
+    const board = document.querySelectorAll('.cell');
+    const statusText = document.getElementById('status');
+    const leaderboard = document.getElementById('leaderboard');
+    const clickSound = document.getElementById('clickSound');
+    const winSound = document.getElementById('winSound');
+    const bgMusic = document.getElementById('bgMusic');
+    const particles = document.getElementById('particles');
+
+    let grid = ["", "", "", "", "", "", "", "", ""];
+    let currentPlayer = "🚀";
+    let gameActive = true;
+    let mode = "1p";
+    let difficulty = "medium";
+
+    let stats = JSON.parse(localStorage.getItem("neoStats")) || { win: 0, draw: 0, loss: 0 };
+
+    const winCombos = [
+      [0,1,2], [3,4,5], [6,7,8],
+      [0,3,6], [1,4,7], [2,5,8],
+      [0,4,8], [2,4,6]
+    ];
+
+    updateLeaderboard();
+
+    function handleClick(e) {
+      const i = e.target.dataset.index;
+      if (!gameActive || grid[i] !== "") return;
+
+      grid[i] = currentPlayer;
+      e.target.textContent = currentPlayer;
+      clickSound.play();
+
+      if (checkWin()) return;
+      if (!grid.includes("")) return endGame("draw");
+
+      if (mode === "1p" && currentPlayer === "🚀") {
+        currentPlayer = "🤖";
+        statusText.textContent = "🤖 AI Thinking...";
+        setTimeout(() => {
+          aiMove();
+          checkWin();
+          if (gameActive) currentPlayer = "🚀";
+          statusText.textContent = "Your Turn (🚀)";
+        }, 500);
+      } else {
+        currentPlayer = currentPlayer === "🚀" ? "🤖" : "🚀";
+        statusText.textContent = `Player ${currentPlayer}'s Turn`;
+      }
+    }
+
+    function aiMove() {
+      let available = grid.map((val, i) => val === "" ? i : null).filter(x => x !== null);
+      let move = (difficulty === "easy") ? 
+        available[Math.floor(Math.random() * available.length)] :
+        (difficulty === "medium" && Math.random() < 0.4) ? 
+        available[Math.floor(Math.random() * available.length)] :
+        minimax(grid, "🤖").index;
+
+      grid[move] = "🤖";
+      board[move].textContent = "🤖";
+    }
+
+    function minimax(newGrid, player) {
+      const empty = newGrid.map((v, i) => v === "" ? i : null).filter(x => x !== null);
+      const opp = player === "🤖" ? "🚀" : "🤖";
+
+      if (checkWinner(newGrid, "🚀")) return { score: -10 };
+      if (checkWinner(newGrid, "🤖")) return { score: 10 };
+      if (empty.length === 0) return { score: 0 };
+
+      const moves = empty.map(i => {
+        let newBoard = [...newGrid];
+        newBoard[i] = player;
+        let result = minimax(newBoard, opp);
+        return { index: i, score: result.score };
+      });
+
+      return player === "🤖"
+        ? moves.reduce((best, move) => move.score > best.score ? move : best)
+        : moves.reduce((best, move) => move.score < best.score ? move : best);
+    }
+
+    function checkWin() {
+      for (let combo of winCombos) {
+        let [a, b, c] = combo;
+        if (grid[a] && grid[a] === grid[b] && grid[a] === grid[c]) {
+          [a, b, c].forEach(i => board[i].classList.add("win-glow"));
+          spawnParticles();
+          winSound.play();
+          endGame(grid[a] === "🚀" ? "win" : "loss");
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function endGame(result) {
+      gameActive = false;
+      if (result === "draw") stats.draw++;
+      else if (result === "win") stats.win++;
+      else stats.loss++;
+      localStorage.setItem("neoStats", JSON.stringify(stats));
+      updateLeaderboard();
+      statusText.textContent = result === "draw" ? "It's a draw!" : (result === "win" ? "🚀 You Win!" : "🤖 AI Wins!");
+    }
+
+    function resetGame() {
+      grid = ["", "", "", "", "", "", "", "", ""];
+      currentPlayer = "🚀";
+      gameActive = true;
+      board.forEach(c => { c.textContent = ""; c.classList.remove("win-glow"); });
+      statusText.textContent = "Your Turn (🚀)";
+    }
+
+    function checkWinner(arr, p) {
+      return winCombos.some(combo => combo.every(i => arr[i] === p));
+    }
+
+    function updateLeaderboard() {
+      leaderboard.textContent = `Wins: ${stats.win} | Draws: ${stats.draw} | Losses: ${stats.loss}`;
+    }
+
+    function setMode() {
+      mode = document.getElementById("modeSelect").value;
+      resetGame();
+    }
+
+    function setDifficulty() {
+      difficulty = document.getElementById("difficultySelect").value;
+    }
+
+    function spawnParticles() {
+      for (let i = 0; i < 50; i++) {
+        let p = document.createElement("div");
+        p.className = "particle";
+        p.style.left = Math.random() * 100 + "vw";
+        p.style.top = Math.random() * 100 + "vh";
+        p.style.width = p.style.height = Math.random() * 5 + 3 + "px";
+        particles.appendChild(p);
+        setTimeout(() => p.remove(), 1500);
+      }
+    }
+
+    board.forEach(cell => cell.addEventListener("click", handleClick));
+    bgMusic.volume = 0.2;
+  </script>
+
+</body>
+</html>
